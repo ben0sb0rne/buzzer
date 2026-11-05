@@ -88,6 +88,7 @@ $("#endGame").addEventListener("click", armEndGame);
 $("#keepAlive").addEventListener("click", markActive);
 addEventListener("pointerdown", markActive);
 addEventListener("keydown", markActive);
+addEventListener("resize", fitRows);
 
 const fromUrl = (new URL(location).searchParams.get("room") || "")
   .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
@@ -204,6 +205,22 @@ function render(snap) {
     td.appendChild(x);
   });
   $("#empty").hidden = teams.length > 0;
+  fitRows();
+}
+
+// This is read from the back of the room, so the type is as big as will fit and no bigger.
+// Wind it down a twentieth at a time until the last team is on screen. It has to be measured
+// rather than counted: one team writing a sentence wraps to three lines and costs more height
+// than three teams answering "42". Past the floor it stops shrinking and the page scrolls,
+// because a dashboard nobody can read from their desk is worse than one that scrolls.
+function fitRows() {
+  const root = document.documentElement;
+  let scale = 1;
+  document.body.style.setProperty("--fit", "1");
+  while (scale > 0.55 && root.scrollHeight > root.clientHeight) {
+    scale -= 0.05;
+    document.body.style.setProperty("--fit", scale.toFixed(2));
+  }
 }
 
 function cell(tr, text, cls, clamp) {

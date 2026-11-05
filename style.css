@@ -174,8 +174,10 @@ body.student { height: 100dvh; overflow: hidden; }
   margin-bottom: 1.6vh;
   border-bottom: 3px solid var(--line);
 }
+/* The three sizes fitRows() scales. It winds --fit down until the last team is on screen,
+   so the dashboard is always as large as it can be and no larger. */
 .roomcode {
-  font-size: clamp(44px, 9vw, 110px);
+  font-size: calc(clamp(44px, 9vw, 110px) * var(--fit, 1));
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.08em;
@@ -204,7 +206,7 @@ th {
 td {
   padding: 0.5em;
   border-top: 2px solid var(--line);
-  font-size: clamp(20px, 2.6vw, 34px);
+  font-size: calc(clamp(20px, 2.6vw, 34px) * var(--fit, 1));
   vertical-align: baseline;
 }
 tr.buzzed { background: var(--faint); }
@@ -219,7 +221,7 @@ td.num {
   color: var(--red);
   padding-right: 0.7em;
 }
-td.members { font-size: clamp(14px, 1.5vw, 21px); color: var(--muted); }
+td.members { font-size: calc(clamp(14px, 1.5vw, 21px) * var(--fit, 1)); color: var(--muted); }
 
 /* Inner box, so one wordy team cannot starve the answer column. */
 .clamp {
