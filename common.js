@@ -22,7 +22,11 @@ function hostSeenAge(code) {
     .catch(() => null);
 }
 
-// Short square-wave buzz. Saves hosting an audio file and needs no preloading.
+// Short square-wave buzz. Saves hosting an audio file and needs no preloading. The sweep sits
+// at 400 Hz rather than down at 240: a tablet or Chromebook speaker is past its roll-off there,
+// so the fundamental never reaches the room and the buzz reads as thin rather than loud.
+// shortcut: a square wave has far lower RMS than a normalised recording, so this is as loud as
+// it gets without hosting a real sound. Replace beep() with a WAV when that lands.
 let actx;
 function audio() {
   actx ||= new (window.AudioContext || window.webkitAudioContext)();
@@ -35,11 +39,11 @@ function beep() {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.type = "square";
-  osc.frequency.setValueAtTime(240, t);
-  osc.frequency.setValueAtTime(180, t + 0.16);
+  osc.frequency.setValueAtTime(400, t);
+  osc.frequency.setValueAtTime(300, t + 0.16);
   gain.gain.setValueAtTime(0.0001, t);
-  gain.gain.exponentialRampToValueAtTime(0.22, t + 0.012);
-  gain.gain.setValueAtTime(0.22, t + 0.3);
+  gain.gain.exponentialRampToValueAtTime(0.7, t + 0.012);
+  gain.gain.setValueAtTime(0.7, t + 0.3);
   gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
   osc.connect(gain).connect(ctx.destination);
   osc.start(t);

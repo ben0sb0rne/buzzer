@@ -23,7 +23,7 @@
   <div class="bar">
     <div class="roomcode" id="roomCode"></div>
     <div class="joinlink">Join at <a id="joinLink" href="#"></a></div>
-    <button id="reset">Reset Buzzers</button>
+    <button id="reset" disabled>Reset Buzzers</button>
     <button id="cog" aria-label="Settings" aria-expanded="false" title="Settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" aria-hidden="true" focusable="false">
@@ -183,6 +183,7 @@ function render(snap) {
     if (!muted) beep();
   }
   buzzedIds = nowBuzzed;
+  $("#reset").disabled = !nowBuzzed.length;
 
   const body = $("#rows");
   body.textContent = "";
@@ -190,7 +191,9 @@ function render(snap) {
     const tr = body.insertRow();
     if (t.buzzedAt) tr.className = "buzzed";
     cell(tr, t.buzzedAt ? String(i + 1) : "", "num");
-    cell(tr, t.name, "name", true);
+    const nameCell = cell(tr, t.name, "name", true);
+    nameCell.title = "Rename this team";
+    nameCell.addEventListener("click", () => renameTeam(t.id, t.name));
     cell(tr, t.members, "members", true);
     cell(tr, t.buzzedAt ? t.answer : "", "answer");
 
@@ -235,6 +238,7 @@ function cell(tr, text, cls, clamp) {
   } else {
     td.textContent = text;
   }
+  return td;
 }
 
 function resetBuzzers() {
@@ -248,6 +252,18 @@ function resetBuzzers() {
     });
     if (Object.keys(updates).length) return teamsRef.update(updates);
   }).catch((err) => { alert("Reset failed: " + err.message); });
+}
+
+// The name cell is its own tap target, so renaming costs the projected dashboard no chrome.
+// name is already one of the five fields database.rules.json allows, so nothing needs
+// re-publishing. The 40-character cap is that file's: past it the write is rejected outright,
+// so truncate rather than fail.
+function renameTeam(id, current) {
+  if (!teamsRef) return;
+  const next = (prompt("Team name:", current) || "").trim().slice(0, 40);
+  if (!next || next === current) return;
+  teamsRef.child(id).update({ name: next })
+    .catch((err) => { alert("Rename failed: " + err.message); });
 }
 
 function removeTeam(id) {
