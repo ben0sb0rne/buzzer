@@ -36,7 +36,7 @@ Bookmark the teacher view. Students only ever need the join link it displays.
 
 ## 3. In class
 
-Open `host.html`, hit **Create room**, put the code and join link on the board. Students open
+Open `host.html`, hit **Create room**, put the code and join address on the board. Students open
 the link, enter a team name and members, and join. They type an answer and hit **Lock Answer**;
 both their device and yours buzz, and their box locks. Buzzed teams jump to the top of your
 list numbered in order. **Reset Buzzers** clears every answer and unlocks everyone for the next
@@ -44,6 +44,10 @@ question. A student who refreshes rejoins as the same team and stays locked if t
 
 The room lives in the URL (`host.html?room=CODE`), so refreshing the teacher view keeps the
 class; opening plain `host.html` starts a new room.
+
+The join address the dashboard prints has no room code in it, so it never changes - students can
+bookmark it once and just type the 4 letters each lesson. The link it points at *does* carry
+`?room=CODE`, so copying it into Google Classroom still fills the code in automatically.
 
 ## About the rules
 

@@ -57,11 +57,14 @@ function newCode() {
 function openRoom(code) {
   try { history.replaceState(null, "", "?room=" + code); } catch (e) {}  // a refresh keeps the room
 
-  const link = new URL("index.html", location.href);
+  // Show the bare folder address: the directory index serves index.html anyway, and a
+  // constant address is short enough to type off the board and to bookmark between lessons.
+  const link = new URL("./", location.href);
+  const shown = link.href.replace(/^https?:\/\//, "").replace(/\/$/, "");
   link.search = "?room=" + code;
   $("#roomCode").textContent = code;
-  $("#joinLink").textContent = link.href.replace(/^https?:\/\//, "");
-  $("#joinLink").href = link.href;
+  $("#joinLink").textContent = shown;
+  $("#joinLink").href = link.href;   // the href still carries the room, so a copied link auto-fills
   $("#setup").hidden = true;
   $("#dash").hidden = false;
 
