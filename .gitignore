@@ -4,6 +4,9 @@
 CLAUDE.md
 .claude/
 
+# tool output
+graphify-out/
+
 # macOS and OneDrive
 .DS_Store
 ._*
