@@ -57,8 +57,7 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const STORE = "buzzer-team";
-const MAX_AGE = 12 * 60 * 60 * 1000;   // an overnight gap: yesterday's room must not reclaim the device
-const HOST_GONE = 60 * 60 * 1000;      // dashboard shut this long: the game is over
+const HOST_GONE = 60 * 60 * 1000;   // dashboard shut this long: the game is over
 const urlCode = (new URL(location).searchParams.get("room") || "")
   .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
 
@@ -95,38 +94,29 @@ function show(which) {
   $("#play").hidden = which !== "play";
 }
 
-// The dashboard stamps rooms/<code>/hostSeen while it is open. Compare it against the
-// server's clock, never the device's: a Chromebook with a wrong clock must not decide this.
-// "unknown" (no stamp, or the read failed) counts as live, so a project whose rules have
-// not been updated yet keeps working exactly as before.
+// The dashboard stamps rooms/<code>/hostSeen once a minute while it is open. "unknown"
+// (no stamp, or the read was refused) counts as live, so a project whose rules have not been
+// updated yet keeps working exactly as before: a device holding a team in a room that has
+// since been emptied gets released by attach() instead.
 function roomState(code) {
-  return db.ref(".info/serverTimeOffset").once("value")
-    .then((o) => {
-      const offset = o.val() || 0;
-      return db.ref("rooms/" + code + "/hostSeen").once("value").then((s) => {
-        const seen = s.val();
-        if (!seen) return "unknown";
-        return (Date.now() + offset) - seen > HOST_GONE ? "over" : "live";
-      });
-    })
-    .catch(() => "unknown");
+  return hostSeenAge(code).then((age) =>
+    age === null ? "unknown" : age > HOST_GONE ? "over" : "live");
 }
 
 function dropDeadRoom(code, teamId) {
   localStorage.removeItem(STORE);
   $("#code").value = urlCode || "";
+  // The stale stamp stays put: it is the gravestone that tells every *other* device in the
+  // class that the game is over. Clearing it would read as a live room to all of them.
   db.ref("rooms/" + code + "/teams/" + teamId).remove().catch(() => {});
-  db.ref("rooms/" + code + "/hostSeen").remove().catch(() => {});
 }
 
+// No expiry clock of its own, so there is only ever one answer to "is this game over": the
+// hour in HOST_GONE, decided on the server's clock. A device keeps its team until it is told.
 function loadSaved() {
   let raw = null;
   try { raw = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
-  // Entries with no timestamp were written before this check existed, so treat them as stale:
-  // that is what releases a device still holding an abandoned room.
-  if (raw && raw.at && Date.now() - raw.at < MAX_AGE) return raw;
-  if (raw) localStorage.removeItem(STORE);
-  return null;
+  return raw && raw.code && raw.teamId ? raw : null;
 }
 
 function join() {
@@ -143,7 +133,7 @@ function join() {
       if (state === "over") throw new Error("That game has ended. Ask for the new code.");
       const ref = db.ref("rooms/" + code + "/teams").push();
       return ref.set({ name: name, members: members, answer: "", locked: false }).then(() => {
-        localStorage.setItem(STORE, JSON.stringify({ code: code, teamId: ref.key, at: Date.now() }));
+        localStorage.setItem(STORE, JSON.stringify({ code: code, teamId: ref.key }));
         attach(code, ref.key);
       });
     })

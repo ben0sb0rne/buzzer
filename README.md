@@ -72,11 +72,19 @@ student device would rejoin the same dead room every time it reopened. Four thin
    the game ends itself. Any click, keypress or student buzz resets the clock.
 3. **The dashboard is closed.** While it is open it stamps `rooms/<code>/hostSeen` once a
    minute. A student device that finds that stamp more than an hour old treats the game as over,
-   deletes its own row and returns to the join screen.
-4. A device also forgets its team after 12 hours, as a backstop.
+   deletes its own row and returns to the join screen. It leaves the stale stamp in the database
+   on purpose: that stamp is what tells the *rest* of the class the game is over.
+4. **The dashboard is opened again.** The leftover stamp, and the rows of any students who
+   never came back, are deleted the next time you open `host.html` in the same browser - which
+   also frees those devices straight away instead of an hour later. It skips the wipe if you are
+   reopening that same room (`?room=CODE`), or if the stamp shows another tab is still running it.
 
-Each of these is doing a different job: 2 covers a forgotten tab, 3 covers a closed one, and
-1 is you ending it deliberately, which is still the tidiest way.
+Each of these is doing a different job: 2 covers a forgotten tab, 3 covers a closed one, 4 sweeps
+up after it, and 1 is you ending it deliberately, which is still the tidiest way.
+
+One hour is the only number involved. Student devices keep no clock of their own: a device holds
+its team until one of the four above says the room is over, so there is a single answer to "is
+this game still running?" and the server's clock decides it, not a Chromebook's.
 
 ## About the rules
 

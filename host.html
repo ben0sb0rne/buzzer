@@ -64,6 +64,8 @@
 const $ = (s) => document.querySelector(s);
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";   // no I or O: they read as 1 and 0 on a projector
 const MUTE_KEY = "buzzer-muted";
+const LAST_ROOM = "buzzer-host-room";     // the room this browser had open last
+const STILL_BEATING = 3 * 60 * 1000;      // a stamp younger than this: another dashboard has it
 
 let roomCode = null;
 let teamsRef = null;
@@ -89,6 +91,13 @@ addEventListener("keydown", markActive);
 
 const fromUrl = (new URL(location).searchParams.get("room") || "")
   .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
+
+// A tab closed without ending the game leaves the room sitting in the database, and nothing
+// server-side can expire it. This browser does know which room it was, so finish the job on
+// the way back in. openRoom() overwrites the key, so there is nothing to tidy up here.
+const leftover = localStorage.getItem(LAST_ROOM);
+if (leftover && leftover !== fromUrl) wipeIfDead(leftover);
+
 if (/^[A-Z]{4}$/.test(fromUrl)) openRoom(fromUrl);
 
 function newCode() {
@@ -112,6 +121,7 @@ function openRoom(code) {
   $("#dash").hidden = false;
 
   roomCode = code;
+  localStorage.setItem(LAST_ROOM, code);   // so the next open can clear up after a closed tab
   teamsRef = db.ref("rooms/" + code + "/teams");
   teamsRef.on("value", render);
   startHeartbeat();
@@ -263,6 +273,29 @@ function disarmEndGame() {
   $("#endGame").classList.remove("danger");
 }
 
+// Deletes every team, then the stamp. Dropping the stamp is never fatal: the room is over
+// either way, and it may not be writable if the published rules predate it.
+function wipeRoom(code) {
+  const ref = db.ref("rooms/" + code + "/teams");
+  return ref.once("value").then((snap) => {
+    const updates = {};
+    snap.forEach((child) => { updates[child.key] = null; });
+    if (Object.keys(updates).length) return ref.update(updates);
+  }).then(() => db.ref("rooms/" + code + "/hostSeen").remove().catch(() => {}));
+}
+
+// Only if nothing is holding the room: a second dashboard tab on this machine must not wipe
+// a game the first one is still running.
+// shortcut: rules that predate hostSeen leave no stamp to read, so that second tab would
+// wipe the live room. Re-publishing database.rules.json fixes it, and the cog says so.
+function wipeIfDead(code) {
+  return hostSeenAge(code).then((age) => {
+    if (code === roomCode) return;                     // this browser has just reopened it
+    if (age !== null && age < STILL_BEATING) return;
+    return wipeRoom(code);
+  }).catch(() => {});
+}
+
 function endGame() {
   if (!teamsRef) return;
   const ref = teamsRef;
@@ -272,13 +305,9 @@ function endGame() {
   beatTimer = null;
   idleTimer = null;
   $("#idlebar").hidden = true;
-  ref.once("value").then((snap) => {
-    const updates = {};
-    snap.forEach((child) => { updates[child.key] = null; });
-    if (Object.keys(updates).length) return ref.update(updates);
-  // never fatal: the room is over either way, and the stamp may not be writable yet
-  }).then(() => db.ref("rooms/" + code + "/hostSeen").remove().catch(() => {})).then(() => {
+  wipeRoom(code).then(() => {
     ref.off();
+    localStorage.removeItem(LAST_ROOM);
     teamsRef = null;
     roomCode = null;
     buzzedIds = null;

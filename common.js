@@ -12,6 +12,16 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const SERVER_TIME = firebase.database.ServerValue.TIMESTAMP;
 
+// How old rooms/<code>/hostSeen is, in ms, measured against the server's clock rather than
+// this device's: a Chromebook with the wrong date must not get to decide whether a game is
+// over. null means there is no stamp, or the read was refused.
+function hostSeenAge(code) {
+  return db.ref(".info/serverTimeOffset").once("value")
+    .then((o) => db.ref("rooms/" + code + "/hostSeen").once("value")
+      .then((s) => (s.val() ? Date.now() + (o.val() || 0) - s.val() : null)))
+    .catch(() => null);
+}
+
 // Short square-wave buzz. Saves hosting an audio file and needs no preloading.
 let actx;
 function audio() {
