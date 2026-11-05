@@ -15,17 +15,30 @@
 </main>
 
 <main id="dash" hidden>
+  <div id="idlebar" class="idlebar" hidden>
+    <span>Nobody has touched this game for a while. It ends in <b id="idleLeft">5:00</b>.</span>
+    <button id="keepAlive">Keep game open</button>
+  </div>
+
   <div class="bar">
     <div class="roomcode" id="roomCode"></div>
     <div class="joinlink">Join at <a id="joinLink" href="#"></a></div>
     <button id="reset">Reset Buzzers</button>
-    <button id="cog" aria-label="Settings" aria-expanded="false" title="Settings">&#9881;</button>
+    <button id="cog" aria-label="Settings" aria-expanded="false" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="8"></circle>
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M20 12h2.5M1.5 12H4M12 4V1.5M12 20v2.5M17.66 6.34l1.76-1.76M4.58 19.42l1.76-1.76M17.66 17.66l1.76 1.76M4.58 4.58l1.76 1.76"></path>
+      </svg>
+    </button>
   </div>
 
   <div id="panel" class="panel" hidden>
     <label class="opt"><input type="checkbox" id="mute"> Mute buzzer on this device</label>
     <button id="endGame">End game</button>
-    <span class="note">Ending the game clears every team and frees student devices to join a new room. Remove one team with the &times; beside its row.</span>
+    <span class="note">Ending the game clears every team and frees student devices to join a new room. Remove one team with the &times; beside its row. A game left open ends by itself an hour after this dashboard is closed.</span>
+    <span id="rulesHint" class="note warn" hidden>Auto-cleanup is off: publish the latest database.rules.json in the Firebase console.</span>
   </div>
 
   <table>
@@ -52,7 +65,15 @@ const $ = (s) => document.querySelector(s);
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";   // no I or O: they read as 1 and 0 on a projector
 const MUTE_KEY = "buzzer-muted";
 
+let roomCode = null;
 let teamsRef = null;
+let beatTimer = null;
+
+// A dashboard left open all night should not keep a room alive. Warn, then wrap it up.
+const IDLE_WARN = 55 * 60 * 1000;
+const IDLE_GRACE = 5 * 60 * 1000;
+let lastActivity = Date.now();
+let idleTimer = null;
 let buzzedIds = null;      // null until the first snapshot, so opening a live room does not beep
 let muted = localStorage.getItem(MUTE_KEY) === "1";
 
@@ -62,6 +83,9 @@ $("#reset").addEventListener("click", resetBuzzers);
 $("#cog").addEventListener("click", togglePanel);
 $("#mute").addEventListener("change", setMute);
 $("#endGame").addEventListener("click", armEndGame);
+$("#keepAlive").addEventListener("click", markActive);
+addEventListener("pointerdown", markActive);
+addEventListener("keydown", markActive);
 
 const fromUrl = (new URL(location).searchParams.get("room") || "")
   .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
@@ -87,8 +111,40 @@ function openRoom(code) {
   $("#setup").hidden = true;
   $("#dash").hidden = false;
 
+  roomCode = code;
   teamsRef = db.ref("rooms/" + code + "/teams");
   teamsRef.on("value", render);
+  startHeartbeat();
+  markActive();
+  clearInterval(idleTimer);
+  idleTimer = setInterval(tickIdle, 1000);
+}
+
+function markActive() {
+  lastActivity = Date.now();
+  $("#idlebar").hidden = true;
+}
+
+function tickIdle() {
+  if (!teamsRef) return;
+  const idle = Date.now() - lastActivity;
+  if (idle < IDLE_WARN) { $("#idlebar").hidden = true; return; }
+  const left = IDLE_WARN + IDLE_GRACE - idle;
+  if (left <= 0) { endGame(); return; }
+  $("#idlebar").hidden = false;
+  const mins = Math.floor(left / 60000);
+  const secs = Math.floor((left % 60000) / 1000);
+  $("#idleLeft").textContent = mins + ":" + String(secs).padStart(2, "0");
+}
+
+// Students read this stamp to tell a live game from an abandoned one. It is the only
+// signal there is: nothing server-side can expire a room on its own.
+function startHeartbeat() {
+  const ref = db.ref("rooms/" + roomCode + "/hostSeen");
+  const beat = () => ref.set(SERVER_TIME).catch(() => { $("#rulesHint").hidden = false; });
+  beat();
+  clearInterval(beatTimer);
+  beatTimer = setInterval(beat, 60000);
 }
 
 function render(snap) {
@@ -111,7 +167,10 @@ function render(snap) {
   );
 
   const nowBuzzed = teams.filter((t) => t.buzzedAt).map((t) => t.id);
-  if (!muted && buzzedIds && nowBuzzed.some((id) => buzzedIds.indexOf(id) === -1)) beep();
+  if (buzzedIds && nowBuzzed.some((id) => buzzedIds.indexOf(id) === -1)) {
+    markActive();
+    if (!muted) beep();
+  }
   buzzedIds = nowBuzzed;
 
   const body = $("#rows");
@@ -207,13 +266,21 @@ function disarmEndGame() {
 function endGame() {
   if (!teamsRef) return;
   const ref = teamsRef;
+  const code = roomCode;
+  clearInterval(beatTimer);            // cleared synchronously so tickIdle cannot re-enter
+  clearInterval(idleTimer);
+  beatTimer = null;
+  idleTimer = null;
+  $("#idlebar").hidden = true;
   ref.once("value").then((snap) => {
     const updates = {};
     snap.forEach((child) => { updates[child.key] = null; });
     if (Object.keys(updates).length) return ref.update(updates);
-  }).then(() => {
+  // never fatal: the room is over either way, and the stamp may not be writable yet
+  }).then(() => db.ref("rooms/" + code + "/hostSeen").remove().catch(() => {})).then(() => {
     ref.off();
     teamsRef = null;
+    roomCode = null;
     buzzedIds = null;
     $("#rows").textContent = "";
     $("#panel").hidden = true;

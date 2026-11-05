@@ -5,6 +5,12 @@
 
     "rooms": {
       "$code": {
+        "hostSeen": {
+          ".read": true,
+          ".write": true,
+          ".validate": "newData.val() == now"
+        },
+
         "teams": {
           ".read": true,
 

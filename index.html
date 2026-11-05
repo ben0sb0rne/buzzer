@@ -28,6 +28,10 @@
   <button id="joinBtn">Join</button>
 </main>
 
+<main id="boot" class="screen" hidden>
+  <p class="boot">Rejoining...</p>
+</main>
+
 <main id="play" class="screen" hidden>
   <div class="who">
     <span id="whoTeam"></span>
@@ -54,6 +58,7 @@
 const $ = (s) => document.querySelector(s);
 const STORE = "buzzer-team";
 const MAX_AGE = 12 * 60 * 60 * 1000;   // an overnight gap: yesterday's room must not reclaim the device
+const HOST_GONE = 60 * 60 * 1000;      // dashboard shut this long: the game is over
 const urlCode = (new URL(location).searchParams.get("room") || "")
   .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
 
@@ -64,13 +69,55 @@ const saved = loadSaved();
 $("#code").value = urlCode || (saved ? saved.code : "");
 
 // The link wins: a different room in the URL means a fresh join, not the remembered team.
-if (saved && (!urlCode || urlCode === saved.code)) attach(saved.code, saved.teamId);
+if (saved && (!urlCode || urlCode === saved.code)) {
+  show("boot");
+  roomState(saved.code).then((state) => {
+    if (state === "over") {
+      dropDeadRoom(saved.code, saved.teamId);
+      show("join");
+      return;
+    }
+    attach(saved.code, saved.teamId);
+  });
+} else {
+  show("join");
+}
 
 $("#joinBtn").addEventListener("click", join);
 $("#members").addEventListener("keydown", (e) => { if (e.key === "Enter") join(); });
 $("#leave").addEventListener("click", armLeave);
 $("#lock").addEventListener("click", lockIn);
 $("#answer").addEventListener("keydown", (e) => { if (e.key === "Enter") lockIn(); });
+
+function show(which) {
+  $("#boot").hidden = which !== "boot";
+  $("#join").hidden = which !== "join";
+  $("#play").hidden = which !== "play";
+}
+
+// The dashboard stamps rooms/<code>/hostSeen while it is open. Compare it against the
+// server's clock, never the device's: a Chromebook with a wrong clock must not decide this.
+// "unknown" (no stamp, or the read failed) counts as live, so a project whose rules have
+// not been updated yet keeps working exactly as before.
+function roomState(code) {
+  return db.ref(".info/serverTimeOffset").once("value")
+    .then((o) => {
+      const offset = o.val() || 0;
+      return db.ref("rooms/" + code + "/hostSeen").once("value").then((s) => {
+        const seen = s.val();
+        if (!seen) return "unknown";
+        return (Date.now() + offset) - seen > HOST_GONE ? "over" : "live";
+      });
+    })
+    .catch(() => "unknown");
+}
+
+function dropDeadRoom(code, teamId) {
+  localStorage.removeItem(STORE);
+  $("#code").value = urlCode || "";
+  db.ref("rooms/" + code + "/teams/" + teamId).remove().catch(() => {});
+  db.ref("rooms/" + code + "/hostSeen").remove().catch(() => {});
+}
 
 function loadSaved() {
   let raw = null;
@@ -91,11 +138,14 @@ function join() {
 
   $("#joinErr").textContent = "";
   $("#joinBtn").disabled = true;
-  const ref = db.ref("rooms/" + code + "/teams").push();
-  ref.set({ name: name, members: members, answer: "", locked: false })
-    .then(() => {
-      localStorage.setItem(STORE, JSON.stringify({ code: code, teamId: ref.key, at: Date.now() }));
-      attach(code, ref.key);
+  roomState(code)
+    .then((state) => {
+      if (state === "over") throw new Error("That game has ended. Ask for the new code.");
+      const ref = db.ref("rooms/" + code + "/teams").push();
+      return ref.set({ name: name, members: members, answer: "", locked: false }).then(() => {
+        localStorage.setItem(STORE, JSON.stringify({ code: code, teamId: ref.key, at: Date.now() }));
+        attach(code, ref.key);
+      });
     })
     .catch((err) => { $("#joinErr").textContent = err.message; })
     .finally(() => { $("#joinBtn").disabled = false; });
@@ -111,8 +161,7 @@ function attach(code, teamId) {
     }
     $("#whoTeam").textContent = team.name;
     $("#whoCode").textContent = code;
-    $("#join").hidden = true;
-    $("#play").hidden = false;
+    show("play");
     setLocked(!!team.locked, team.answer || "");
   });
 }
@@ -153,8 +202,7 @@ function toJoinScreen() {
   $("#lock").textContent = "Lock Answer";
   $("#playErr").textContent = "";
   $("#code").value = "";
-  $("#play").hidden = true;
-  $("#join").hidden = false;
+  show("join");
 }
 
 function setLocked(locked, answer) {

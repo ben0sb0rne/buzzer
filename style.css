@@ -244,7 +244,8 @@ td.answer { font-weight: 600; }
 /* A plain grey glyph, not a second button competing with Reset Buzzers. It stays a
    <button> element so it is still reachable by keyboard and by a screen reader. */
 #cog {
-  padding: 0 0 0 0.2em;
+  display: flex;
+  padding: 0;
   margin-left: 0.9em;
   font-size: clamp(20px, 2.4vw, 30px);
   line-height: 1;
@@ -252,6 +253,7 @@ td.answer { font-weight: 600; }
   background: none;
   border-radius: 0;
 }
+#cog svg { display: block; width: 1em; height: 1em; }
 #cog:hover,
 #cog:focus-visible,
 #cog[aria-expanded="true"] { color: var(--muted); }
@@ -307,3 +309,29 @@ body.editing .rm { display: table-cell; }
   border-radius: 8px;
 }
 .rmbtn:hover { color: #fff; background: var(--red); }
+
+.boot { margin: auto; color: var(--muted); font-size: clamp(18px, 5vw, 26px); font-weight: 600; }
+.panel .warn { color: var(--red); }
+
+.idlebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8em 1.2em;
+  padding: 0.8em 1.1em;
+  margin-bottom: 1.4vh;
+  background: #fdeced;
+  border: 2px solid var(--red);
+  border-radius: 12px;
+  font-size: clamp(15px, 1.7vw, 22px);
+  font-weight: 600;
+}
+#keepAlive {
+  margin-left: auto;
+  padding: 0.5em 1.1em;
+  font-size: inherit;
+  font-weight: 700;
+  color: #fff;
+  background: var(--red);
+  border-radius: 10px;
+}

@@ -62,29 +62,35 @@ projected dashboard stays clean. Opening it gives you:
 
 ## Ending a game
 
-Closing the teacher tab does *not* end a game. Teams live in the database, so a student device
-would rejoin the same dead room every time it reopened. Two things prevent that:
+Closing the teacher tab does *not* end a game by itself: teams live in the database, so a
+student device would rejoin the same dead room every time it reopened. Four things end one.
 
-1. **End game** deletes every team in the room. Any student device, open or closed, lands back
-   on the join screen the moment it next sees the database.
-2. A device forgets its team after 12 hours anyway, so a game you forgot to end cannot follow
-   you into the next day.
-3. A student can tap **Room XXXX** in the corner of their own screen and tap again to confirm,
-   which drops them back to the join screen so they can enter a different code. Their team row
-   stays on your dashboard with whatever they had locked in; remove it with the **x** if you
-   do not want it.
+1. **End game** in the cog deletes every team in the room. Any student device, open or closed,
+   lands back on the join screen the moment it next sees the database.
+2. **The dashboard is left open but untouched.** After 55 minutes with no clicks and no buzzes,
+   a red bar appears with a 5 minute countdown and a **Keep game open** button. Ignore it and
+   the game ends itself. Any click, keypress or student buzz resets the clock.
+3. **The dashboard is closed.** While it is open it stamps `rooms/<code>/hostSeen` once a
+   minute. A student device that finds that stamp more than an hour old treats the game as over,
+   deletes its own row and returns to the join screen.
+4. A device also forgets its team after 12 hours, as a backstop.
 
-Use End game at the end of a lesson. If you forget, the next day still starts clean - but
-students in a later lesson the same day would still be holding the morning's room, so end it.
-
+Each of these is doing a different job: 2 covers a forgotten tab, 3 covers a closed one, and
+1 is you ending it deliberately, which is still the tidiest way.
 
 ## About the rules
 
 Anyone who knows a room code can read that room's teams and write to a team inside it - there
 are no accounts, so the 4-letter code is the only thing standing between a class and its room.
-On top of that, the rules pin the data to exactly the five fields the app uses, reject anything
+On top of that, the rules pin each team to exactly the five fields the app uses, reject anything
 else, and require `buzzedAt` to equal the server's own clock, so a student cannot fake an
-earlier buzz by changing the time on their Chromebook.
+earlier buzz by changing the time on their Chromebook. The same applies to `hostSeen`, the one
+field outside `teams`: it is the teacher dashboard's "I am still here" stamp, and it too has to
+match the server clock.
+
+If you ever see **"Auto-cleanup is off"** inside the cog, it means the published rules predate
+`hostSeen`. Re-paste `database.rules.json` in the console. Everything else keeps working in the
+meantime; only the automatic cleanup of abandoned rooms is inactive.
 
 Fine for classroom answers. Do not put anything private in it, and make a fresh room per class
 if you would rather old answers were not readable by someone who still has yesterday's code.
