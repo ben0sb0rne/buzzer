@@ -4,7 +4,7 @@
 const firebaseConfig = {
   apiKey: "AIzaSyDK5DXMjeOv1zD5XxXPG_1JLFaP1YN4SI0",
   authDomain: "buzzer-7cbfd.firebaseapp.com",
-  databaseURL: "",
+  databaseURL: "https://buzzer-7cbfd-default-rtdb.firebaseio.com",
   projectId: "buzzer-7cbfd",
   storageBucket: "buzzer-7cbfd.firebasestorage.app",
   messagingSenderId: "534142190420",
