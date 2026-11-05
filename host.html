@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buzzer - Teacher</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="host">
+
+<main id="setup">
+  <h1>Classroom Buzzer</h1>
+  <p class="sub">Create a room, then put the code and link on the board.</p>
+  <button id="createBtn">Create room</button>
+</main>
+
+<main id="dash" hidden>
+  <div class="bar">
+    <div class="roomcode" id="roomCode"></div>
+    <div class="joinlink">Join at <a id="joinLink" href="#"></a></div>
+    <button id="reset">Reset Buzzers</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>#</th><th>Team</th><th>Members</th><th>Answer</th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p class="empty" id="empty">Waiting for teams to join...</p>
+</main>
+
+<script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="common.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";   // no I or O: they read as 1 and 0 on a projector
+
+let teamsRef = null;
+let buzzedIds = null;      // null until the first snapshot, so opening a live room does not beep
+
+$("#createBtn").addEventListener("click", () => openRoom(newCode()));
+$("#reset").addEventListener("click", resetBuzzers);
+
+const fromUrl = (new URL(location).searchParams.get("room") || "")
+  .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
+if (/^[A-Z]{4}$/.test(fromUrl)) openRoom(fromUrl);
+
+function newCode() {
+  let code = "";
+  for (let i = 0; i < 4; i++) code += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+  return code;
+}
+
+function openRoom(code) {
+  try { history.replaceState(null, "", "?room=" + code); } catch (e) {}  // a refresh keeps the room
+
+  const link = new URL("index.html", location.href);
+  link.search = "?room=" + code;
+  $("#roomCode").textContent = code;
+  $("#joinLink").textContent = link.href.replace(/^https?:\/\//, "");
+  $("#joinLink").href = link.href;
+  $("#setup").hidden = true;
+  $("#dash").hidden = false;
+
+  teamsRef = db.ref("rooms/" + code + "/teams");
+  teamsRef.on("value", render);
+}
+
+function render(snap) {
+  const teams = [];
+  snap.forEach((child) => {
+    const t = child.val() || {};
+    teams.push({
+      id: child.key,
+      name: t.name || "",
+      members: t.members || "",
+      answer: t.answer || "",
+      buzzedAt: t.buzzedAt || 0
+    });
+  });
+
+  teams.sort((a, b) =>
+    (a.buzzedAt ? 0 : 1) - (b.buzzedAt ? 0 : 1) ||   // buzzed first
+    a.buzzedAt - b.buzzedAt ||                       // then by server buzz time
+    a.id.localeCompare(b.id)                         // stable tie-break
+  );
+
+  const nowBuzzed = teams.filter((t) => t.buzzedAt).map((t) => t.id);
+  if (buzzedIds && nowBuzzed.some((id) => buzzedIds.indexOf(id) === -1)) beep();
+  buzzedIds = nowBuzzed;
+
+  const body = $("#rows");
+  body.textContent = "";
+  teams.forEach((t, i) => {
+    const tr = body.insertRow();
+    if (t.buzzedAt) tr.className = "buzzed";
+    cell(tr, t.buzzedAt ? String(i + 1) : "", "num");
+    cell(tr, t.name, "name");
+    cell(tr, t.members, "members");
+    cell(tr, t.buzzedAt ? t.answer : "", "answer");
+  });
+  $("#empty").hidden = teams.length > 0;
+}
+
+function cell(tr, text, cls) {
+  const td = tr.insertCell();
+  td.textContent = text;    // team names are typed by students: never innerHTML
+  td.className = cls;
+}
+
+function resetBuzzers() {
+  if (!teamsRef) return;
+  teamsRef.once("value").then((snap) => {
+    const updates = {};
+    snap.forEach((child) => {
+      updates[child.key + "/answer"] = "";
+      updates[child.key + "/buzzedAt"] = null;
+      updates[child.key + "/locked"] = false;
+    });
+    if (Object.keys(updates).length) return teamsRef.update(updates);
+  }).catch((err) => { alert("Reset failed: " + err.message); });
+}
+</script>
+</body>
+</html>

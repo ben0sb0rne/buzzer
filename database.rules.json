@@ -1,0 +1,27 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "rooms": {
+      "$code": {
+        "teams": {
+          ".read": true,
+
+          "$teamId": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['name', 'members', 'answer', 'locked'])",
+
+            "name":     { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "members":  { ".validate": "newData.isString() && newData.val().length <= 200" },
+            "answer":   { ".validate": "newData.isString() && newData.val().length <= 300" },
+            "locked":   { ".validate": "newData.isBoolean()" },
+            "buzzedAt": { ".validate": "newData.val() == now" },
+
+            "$other":   { ".validate": false }
+          }
+        }
+      }
+    }
+  }
+}

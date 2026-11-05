@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Buzzer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="student">
+
+<main id="join" class="screen">
+  <h1>Classroom Buzzer</h1>
+
+  <div class="field">
+    <label for="code">Room code</label>
+    <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="field">
+    <label for="team">Team name</label>
+    <input id="team" maxlength="40" autocomplete="off">
+  </div>
+  <div class="field">
+    <label for="members">Team members (separate with commas)</label>
+    <input id="members" maxlength="200" autocomplete="off" placeholder="Ada, Grace, Alan">
+  </div>
+
+  <p id="joinErr" class="err"></p>
+  <button id="joinBtn">Join</button>
+</main>
+
+<main id="play" class="screen" hidden>
+  <div class="who"><span id="whoTeam"></span><span>Room <b id="whoCode"></b></span></div>
+
+  <div class="answerbox">
+    <input id="answer" placeholder=" " autocomplete="off" enterkeyhint="done" maxlength="300">
+    <div class="hint" aria-hidden="true">Type answer here<span class="dots"><b>.</b><b>.</b><b>.</b></span></div>
+  </div>
+
+  <p id="playErr" class="err"></p>
+  <button id="lock">Lock Answer</button>
+</main>
+
+<script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="common.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const STORE = "buzzer-team";
+const urlCode = (new URL(location).searchParams.get("room") || "")
+  .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
+
+let teamRef = null;
+let wasLocked = false;
+
+const saved = JSON.parse(localStorage.getItem(STORE) || "null");
+$("#code").value = urlCode || (saved ? saved.code : "");
+
+// The link wins: a different room in the URL means a fresh join, not the remembered team.
+if (saved && (!urlCode || urlCode === saved.code)) attach(saved.code, saved.teamId);
+
+$("#joinBtn").addEventListener("click", join);
+$("#members").addEventListener("keydown", (e) => { if (e.key === "Enter") join(); });
+$("#lock").addEventListener("click", lockIn);
+$("#answer").addEventListener("keydown", (e) => { if (e.key === "Enter") lockIn(); });
+
+function join() {
+  const code = $("#code").value.trim().toUpperCase();
+  const name = $("#team").value.trim();
+  const members = $("#members").value.trim();
+  if (!/^[A-Z]{4}$/.test(code)) { $("#joinErr").textContent = "Enter the 4-letter room code."; return; }
+  if (!name) { $("#joinErr").textContent = "Enter a team name."; return; }
+
+  $("#joinErr").textContent = "";
+  $("#joinBtn").disabled = true;
+  const ref = db.ref("rooms/" + code + "/teams").push();
+  ref.set({ name: name, members: members, answer: "", locked: false })
+    .then(() => {
+      localStorage.setItem(STORE, JSON.stringify({ code: code, teamId: ref.key }));
+      attach(code, ref.key);
+    })
+    .catch((err) => { $("#joinErr").textContent = err.message; })
+    .finally(() => { $("#joinBtn").disabled = false; });
+}
+
+function attach(code, teamId) {
+  teamRef = db.ref("rooms/" + code + "/teams/" + teamId);
+  teamRef.on("value", (snap) => {
+    const team = snap.val();
+    if (!team) {                       // team gone (room wiped) - back to the join screen
+      teamRef.off();
+      teamRef = null;
+      localStorage.removeItem(STORE);
+      $("#play").hidden = true;
+      $("#join").hidden = false;
+      return;
+    }
+    $("#whoTeam").textContent = team.name;
+    $("#whoCode").textContent = code;
+    $("#join").hidden = true;
+    $("#play").hidden = false;
+    setLocked(!!team.locked, team.answer || "");
+  });
+}
+
+function setLocked(locked, answer) {
+  const box = $("#answer");
+  const btn = $("#lock");
+  if (locked) {
+    box.value = answer;
+  } else if (wasLocked) {
+    box.value = "";                    // only on release, so live typing is never wiped
+    $("#playErr").textContent = "";
+  }
+  wasLocked = locked;
+  box.disabled = locked;
+  btn.disabled = locked;
+  btn.textContent = locked ? "Locked in" : "Lock Answer";
+}
+
+function lockIn() {
+  if (!teamRef) return;
+  const answer = $("#answer").value.trim();
+  if (!answer) return;                 // empty box does nothing
+  beep();
+  teamRef.update({ answer: answer, buzzedAt: SERVER_TIME, locked: true })
+    .catch((err) => { $("#playErr").textContent = err.message; });
+}
+</script>
+</body>
+</html>
