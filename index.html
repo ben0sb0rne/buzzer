@@ -29,7 +29,13 @@
 </main>
 
 <main id="play" class="screen" hidden>
-  <div class="who"><span id="whoTeam"></span><span>Room <b id="whoCode"></b></span></div>
+  <div class="who">
+    <span id="whoTeam"></span>
+    <button id="leave" class="leave" title="Change room">
+      <span id="leaveIdle">Room <b id="whoCode"></b></span>
+      <span id="leaveArm" hidden>Tap again to leave</span>
+    </button>
+  </div>
 
   <div class="answerbox">
     <input id="answer" placeholder=" " autocomplete="off" enterkeyhint="done" maxlength="300">
@@ -47,13 +53,14 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const STORE = "buzzer-team";
+const MAX_AGE = 12 * 60 * 60 * 1000;   // an overnight gap: yesterday's room must not reclaim the device
 const urlCode = (new URL(location).searchParams.get("room") || "")
   .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
 
 let teamRef = null;
 let wasLocked = false;
 
-const saved = JSON.parse(localStorage.getItem(STORE) || "null");
+const saved = loadSaved();
 $("#code").value = urlCode || (saved ? saved.code : "");
 
 // The link wins: a different room in the URL means a fresh join, not the remembered team.
@@ -61,8 +68,19 @@ if (saved && (!urlCode || urlCode === saved.code)) attach(saved.code, saved.team
 
 $("#joinBtn").addEventListener("click", join);
 $("#members").addEventListener("keydown", (e) => { if (e.key === "Enter") join(); });
+$("#leave").addEventListener("click", armLeave);
 $("#lock").addEventListener("click", lockIn);
 $("#answer").addEventListener("keydown", (e) => { if (e.key === "Enter") lockIn(); });
+
+function loadSaved() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
+  // Entries with no timestamp were written before this check existed, so treat them as stale:
+  // that is what releases a device still holding an abandoned room.
+  if (raw && raw.at && Date.now() - raw.at < MAX_AGE) return raw;
+  if (raw) localStorage.removeItem(STORE);
+  return null;
+}
 
 function join() {
   const code = $("#code").value.trim().toUpperCase();
@@ -76,7 +94,7 @@ function join() {
   const ref = db.ref("rooms/" + code + "/teams").push();
   ref.set({ name: name, members: members, answer: "", locked: false })
     .then(() => {
-      localStorage.setItem(STORE, JSON.stringify({ code: code, teamId: ref.key }));
+      localStorage.setItem(STORE, JSON.stringify({ code: code, teamId: ref.key, at: Date.now() }));
       attach(code, ref.key);
     })
     .catch((err) => { $("#joinErr").textContent = err.message; })
@@ -87,12 +105,8 @@ function attach(code, teamId) {
   teamRef = db.ref("rooms/" + code + "/teams/" + teamId);
   teamRef.on("value", (snap) => {
     const team = snap.val();
-    if (!team) {                       // team gone (room wiped) - back to the join screen
-      teamRef.off();
-      teamRef = null;
-      localStorage.removeItem(STORE);
-      $("#play").hidden = true;
-      $("#join").hidden = false;
+    if (!team) {                       // team gone (teacher ended the game) - back to the join screen
+      toJoinScreen();
       return;
     }
     $("#whoTeam").textContent = team.name;
@@ -101,6 +115,46 @@ function attach(code, teamId) {
     $("#play").hidden = false;
     setLocked(!!team.locked, team.answer || "");
   });
+}
+
+// Two taps, so a stray touch on a locked answer screen cannot drop the team.
+let leaveArmed = false;
+let leaveTimer = null;
+function armLeave() {
+  if (!leaveArmed) {
+    leaveArmed = true;
+    $("#leaveIdle").hidden = true;
+    $("#leaveArm").hidden = false;
+    $("#leave").classList.add("arm");
+    leaveTimer = setTimeout(disarmLeave, 4000);
+    return;
+  }
+  clearTimeout(leaveTimer);
+  disarmLeave();
+  toJoinScreen();
+}
+
+function disarmLeave() {
+  leaveArmed = false;
+  $("#leaveIdle").hidden = false;
+  $("#leaveArm").hidden = true;
+  $("#leave").classList.remove("arm");
+}
+
+// Leaves the team in the database on purpose: the teacher keeps the row (and any locked
+// answer) and can drop it with the x in the settings panel.
+function toJoinScreen() {
+  if (teamRef) { teamRef.off(); teamRef = null; }
+  localStorage.removeItem(STORE);
+  wasLocked = false;
+  $("#answer").disabled = false;
+  $("#answer").value = "";
+  $("#lock").disabled = false;
+  $("#lock").textContent = "Lock Answer";
+  $("#playErr").textContent = "";
+  $("#code").value = "";
+  $("#play").hidden = true;
+  $("#join").hidden = false;
 }
 
 function setLocked(locked, answer) {

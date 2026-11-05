@@ -93,6 +93,18 @@ body.student { height: 100dvh; overflow: hidden; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.who .leave {
+  font: inherit;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  padding: 0.25em 0.5em;
+  border-radius: 8px;
+  white-space: nowrap;
+  flex: none;
+}
+.who .leave:hover { background: var(--faint); }
+.who .leave.arm { color: #fff; background: var(--red); }
 
 .answerbox { position: relative; flex: 1; min-height: 0; display: flex; }
 .answerbox input {
@@ -197,15 +209,101 @@ td {
 }
 tr.buzzed { background: var(--faint); }
 tr.buzzed .name { font-weight: 800; }
-.num {
-  width: 1.8em;
+/* Team and Members shrink to their content (or their header); Answer takes the rest. */
+.num, .name, .members, .rm { width: 1%; white-space: nowrap; }
+.answer { width: auto; }
+
+td.num {
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--red);
+  padding-right: 0.7em;
 }
-.name { white-space: nowrap; }
-.members { font-size: clamp(14px, 1.5vw, 21px); color: var(--muted); }
-.answer { font-weight: 600; }
+td.members { font-size: clamp(14px, 1.5vw, 21px); color: var(--muted); }
+
+/* Inner box, so one wordy team cannot starve the answer column. */
+.clamp {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+td.name .clamp { max-width: 20ch; }
+td.members .clamp { max-width: 24ch; }
+td.answer { font-weight: 600; }
 .empty { color: var(--muted); font-size: clamp(18px, 2.2vw, 28px); padding: 1.5em 0.4em; }
 
 .err:empty { display: none; }
+
+/* ---------- teacher settings (behind the cog) ---------- */
+
+/* Everything here stays hidden by default: the projected dashboard shows only
+   the code, the join address and Reset Buzzers. */
+
+/* A plain grey glyph, not a second button competing with Reset Buzzers. It stays a
+   <button> element so it is still reachable by keyboard and by a screen reader. */
+#cog {
+  padding: 0 0 0 0.2em;
+  margin-left: 0.9em;
+  font-size: clamp(20px, 2.4vw, 30px);
+  line-height: 1;
+  color: #9fb0bf;
+  background: none;
+  border-radius: 0;
+}
+#cog:hover,
+#cog:focus-visible,
+#cog[aria-expanded="true"] { color: var(--muted); }
+
+.panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8em 1.8em;
+  padding: 0.9em 1.1em;
+  margin-bottom: 1.6vh;
+  background: var(--faint);
+  border-radius: 12px;
+  font-size: clamp(14px, 1.5vw, 19px);
+  color: var(--muted);
+}
+.panel .opt {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  color: var(--ink);
+  font-weight: 600;
+}
+.panel input[type="checkbox"] {
+  width: 1.15em;
+  height: 1.15em;
+  border: 0;
+  border-radius: 0;
+  accent-color: var(--red);
+}
+.panel .note { flex: 1 1 20ch; font-size: 0.85em; }
+
+#endGame {
+  padding: 0.5em 1em;
+  font-size: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+}
+#endGame.danger { color: #fff; background: var(--red); border-color: var(--red); }
+
+.rm { display: none; }
+body.editing .rm { display: table-cell; }
+.rmbtn {
+  padding: 0 0.45em;
+  font-size: clamp(18px, 2vw, 26px);
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--faint);
+  border-radius: 8px;
+}
+.rmbtn:hover { color: #fff; background: var(--red); }

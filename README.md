@@ -49,6 +49,35 @@ The join address the dashboard prints has no room code in it, so it never change
 bookmark it once and just type the 4 letters each lesson. The link it points at *does* carry
 `?room=CODE`, so copying it into Google Classroom still fills the code in automatically.
 
+## The cog
+
+Everything that is not needed during a question hides behind the cog in the top right, so the
+projected dashboard stays clean. Opening it gives you:
+
+- **Mute buzzer on this device** - silences the sound on the teacher machine only; student
+  devices still buzz. Remembered on that machine.
+- **End game** - two taps, because it clears every team in the room (see below).
+- A **x** beside each row while the panel is open, to remove one team. Use it for the duplicate
+  row you get when a student rejoins from a different browser.
+
+## Ending a game
+
+Closing the teacher tab does *not* end a game. Teams live in the database, so a student device
+would rejoin the same dead room every time it reopened. Two things prevent that:
+
+1. **End game** deletes every team in the room. Any student device, open or closed, lands back
+   on the join screen the moment it next sees the database.
+2. A device forgets its team after 12 hours anyway, so a game you forgot to end cannot follow
+   you into the next day.
+3. A student can tap **Room XXXX** in the corner of their own screen and tap again to confirm,
+   which drops them back to the join screen so they can enter a different code. Their team row
+   stays on your dashboard with whatever they had locked in; remove it with the **x** if you
+   do not want it.
+
+Use End game at the end of a lesson. If you forget, the next day still starts clean - but
+students in a later lesson the same day would still be holding the morning's room, so end it.
+
+
 ## About the rules
 
 Anyone who knows a room code can read that room's teams and write to a team inside it - there
