@@ -71,9 +71,11 @@ student device would rejoin the same dead room every time it reopened. Four thin
    a red bar appears with a 5 minute countdown and a **Keep game open** button. Ignore it and
    the game ends itself. Any click, keypress or student buzz resets the clock.
 3. **The dashboard is closed.** While it is open it stamps `rooms/<code>/hostSeen` once a
-   minute. A student device that finds that stamp more than an hour old treats the game as over,
-   deletes its own row and returns to the join screen. It leaves the stale stamp in the database
-   on purpose: that stamp is what tells the *rest* of the class the game is over.
+   minute. A student device reads that stamp when its page loads, and if it is more than an hour
+   old it treats the game as over, deletes its own row and returns to the join screen. A device
+   sitting open on the answer screen is not watching the stamp, so 4 is what frees that one. The
+   stale stamp stays in the database on purpose: it is what tells the *rest* of the class the
+   game is over.
 4. **The dashboard is opened again.** The leftover stamp, and the rows of any students who
    never came back, are deleted the next time you open `host.html` in the same browser - which
    also frees those devices straight away instead of an hour later. It skips the wipe if you are

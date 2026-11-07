@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Buzzer - tests</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem auto; max-width: 44rem; padding: 0 1rem; }
+  h1 { font-size: 1.3rem; margin-bottom: 0.2em; }
+  p.lead { color: #55687a; margin-top: 0; }
+  ol { padding-left: 1.4em; }
+  li { margin: 0.35em 0; }
+  code { background: #eef2f5; padding: 0 0.3em; border-radius: 4px; }
+  .pass { color: #0a7d2b; }
+  .fail { color: #d81e26; font-weight: 700; }
+  #summary { font-size: 1.1rem; font-weight: 700; margin-top: 1.2em; }
+</style>
+</head>
+<body>
+
+<h1>Buzzer tests</h1>
+<p class="lead">Open this file in a browser. Nothing to install, nothing to run.</p>
+
+<ol id="out"></ol>
+<p id="summary"></p>
+
+<script>
+// common.js expects Firebase to have loaded already. byBuzzOrder does not need it, so stub
+// just enough for the file to load and test the function the dashboard actually ships.
+const firebaseConfig = { databaseURL: "stub" };
+const firebase = {
+  initializeApp() {},
+  database: Object.assign(() => ({ ref: () => ({}) }), { ServerValue: { TIMESTAMP: 0 } })
+};
+</script>
+<script src="common.js"></script>
+<script>
+// render() builds its rows with `t.buzzedAt || 0`, so an unbuzzed team reaches the sort as 0,
+// never undefined. 0 is therefore the only value that means "has not buzzed".
+const team = (id, buzzedAt) => ({ id: id, buzzedAt: buzzedAt });
+const order = (teams) => teams.slice().sort(byBuzzOrder).map((t) => t.id).join(" ");
+
+const cases = [
+  ["nobody has buzzed: a steady order, so rows do not jump about while teams join",
+   [team("b", 0), team("a", 0)], "a b"],
+
+  ["one team buzzed: it goes to the top, wherever it sat before",
+   [team("a", 0), team("b", 5000)], "b a"],
+
+  ["two buzzed: the earlier server stamp wins, whichever arrived first",
+   [team("late", 5002), team("early", 5001)], "early late"],
+
+  ["the same millisecond: falls back to push id, which is itself in time order",
+   [team("b", 5000), team("a", 5000)], "a b"],
+
+  ["a real question: three of five buzzed, in buzz order, then the rest",
+   [team("e", 0), team("c", 5003), team("a", 5001), team("d", 0), team("b", 5002)], "a b c d e"],
+
+  ["a tiny stamp is still a buzz: only 0 counts as unbuzzed",
+   [team("a", 0), team("b", 1)], "b a"],
+
+  ["one team on its own, buzzed or not, does not throw",
+   [team("a", 0)], "a"],
+
+  ["no teams at all: an empty room sorts to nothing",
+   [], ""]
+];
+
+let failed = 0;
+const out = document.getElementById("out");
+
+for (const [what, teams, want] of cases) {
+  const got = order(teams);
+  const ok = got === want;
+  if (!ok) failed++;
+  const li = document.createElement("li");
+  li.className = ok ? "pass" : "fail";
+  li.textContent = (ok ? "PASS - " : "FAIL - ") + what +
+    (ok ? "" : '  (wanted "' + want + '", got "' + got + '")');
+  out.appendChild(li);
+  console.assert(ok, what, { want: want, got: got });
+}
+
+const summary = document.getElementById("summary");
+summary.textContent = failed
+  ? failed + " of " + cases.length + " failed"
+  : "All " + cases.length + " passed.";
+summary.className = failed ? "fail" : "pass";
+</script>
+</body>
+</html>

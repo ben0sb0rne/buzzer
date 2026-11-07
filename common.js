@@ -14,12 +14,32 @@ const SERVER_TIME = firebase.database.ServerValue.TIMESTAMP;
 
 // How old rooms/<code>/hostSeen is, in ms, measured against the server's clock rather than
 // this device's: a Chromebook with the wrong date must not get to decide whether a game is
-// over. null means there is no stamp, or the read was refused.
+// over. null means there is no stamp at all, so no dashboard has ever opened that code - a
+// mistyped one. A read that fails rejects instead, so a caller can tell "no such room" from
+// "could not ask": opposite answers that must not share a return value.
 function hostSeenAge(code) {
   return db.ref(".info/serverTimeOffset").once("value")
     .then((o) => db.ref("rooms/" + code + "/hostSeen").once("value")
-      .then((s) => (s.val() ? Date.now() + (o.val() || 0) - s.val() : null)))
-    .catch(() => null);
+      .then((s) => (s.val() ? Date.now() + (o.val() || 0) - s.val() : null)));
+}
+
+// localStorage throws rather than returning null when a browser blocks site data - Safari with
+// cookies off, iOS private browsing. Nothing kept here is worth a dead page, so lose the value
+// instead: a forgotten mute setting beats a dashboard whose buttons never got wired up.
+function recall(key) {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+function remember(key, value) {
+  try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (e) {}
+}
+
+// Who buzzed first, and the order the dashboard lists them in: buzzed teams above unbuzzed,
+// then by the server's clock, then by push id so equal stamps keep a steady order. This is the
+// one calculation the app exists for, so it lives here where tests.html can reach it.
+function byBuzzOrder(a, b) {
+  return (a.buzzedAt ? 0 : 1) - (b.buzzedAt ? 0 : 1) ||
+    a.buzzedAt - b.buzzedAt ||
+    a.id.localeCompare(b.id);
 }
 
 // Short square-wave buzz. Saves hosting an audio file and needs no preloading. The sweep sits

@@ -29,7 +29,7 @@
 </main>
 
 <main id="boot" class="screen" hidden>
-  <p class="boot">Rejoining...</p>
+  <p class="boot" id="bootMsg">Rejoining...</p>
 </main>
 
 <main id="play" class="screen" hidden>
@@ -42,7 +42,7 @@
   </div>
 
   <div class="answerbox">
-    <input id="answer" placeholder=" " autocomplete="off" enterkeyhint="done" maxlength="300">
+    <input id="answer" aria-label="Your answer" placeholder=" " autocomplete="off" enterkeyhint="done" maxlength="300">
     <div class="hint" aria-hidden="true">Type your answer</div>
   </div>
 
@@ -58,6 +58,7 @@
 const $ = (s) => document.querySelector(s);
 const STORE = "buzzer-team";
 const HOST_GONE = 60 * 60 * 1000;   // dashboard shut this long: the game is over
+const OFFLINE = "Can't reach the server. Check Wi-Fi and try again.";
 const urlCode = (new URL(location).searchParams.get("room") || "")
   .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
 
@@ -70,12 +71,18 @@ $("#code").value = urlCode || (saved ? saved.code : "");
 // The link wins: a different room in the URL means a fresh join, not the remembered team.
 if (saved && (!urlCode || urlCode === saved.code)) {
   show("boot");
-  roomState(saved.code).then((state) => {
-    if (state === "over") {
+  withTimeout(roomState(saved.code)).then((state) => {
+    if (state === "over" || state === "none") {
       dropDeadRoom(saved.code, saved.teamId);
       show("join");
       return;
     }
+    attach(saved.code, saved.teamId);
+  }).catch(() => {
+    // Not dropped and not sent to the join screen: a blip must not cost the team, and rejoining
+    // there would make a second row. Say what is wrong, then let attach() land it if the
+    // connection comes back - its listener fires on its own and swaps in the play screen.
+    $("#bootMsg").textContent = OFFLINE;
     attach(saved.code, saved.teamId);
   });
 } else {
@@ -94,17 +101,27 @@ function show(which) {
   $("#play").hidden = which !== "play";
 }
 
-// The dashboard stamps rooms/<code>/hostSeen once a minute while it is open. "unknown"
-// (no stamp, or the read was refused) counts as live, so a project whose rules have not been
-// updated yet keeps working exactly as before: a device holding a team in a room that has
-// since been emptied gets released by attach() instead.
+// The dashboard stamps rooms/<code>/hostSeen once a minute while it is open, so the stamp
+// tells a live room from a dead one - and its absence tells both from a room that has never
+// existed. "none" is that case: a mistyped code, which used to read as live and quietly got
+// its own room. "unknown" is a read that failed, and that still counts as live, so a project
+// whose rules predate hostSeen keeps working exactly as before: a device holding a team in a
+// room that has since been emptied gets released by attach() instead.
 function roomState(code) {
-  return hostSeenAge(code).then((age) =>
-    age === null ? "unknown" : age > HOST_GONE ? "over" : "live");
+  return hostSeenAge(code)
+    .then((age) => (age === null ? "none" : age > HOST_GONE ? "over" : "live"))
+    .catch(() => "unknown");
+}
+
+// A Firebase read never times out; it waits for a connection. On a network that is not up yet,
+// or one that blocks wss://, that leaves a student watching a dead screen with nothing to read
+// and no way back. Ten seconds is long enough for slow school Wi-Fi and short enough to say so.
+function withTimeout(p) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(OFFLINE)), 10000))]);
 }
 
 function dropDeadRoom(code, teamId) {
-  localStorage.removeItem(STORE);
+  remember(STORE, null);
   $("#code").value = urlCode || "";
   // The stale stamp stays put: it is the gravestone that tells every *other* device in the
   // class that the game is over. Clearing it would read as a live room to all of them.
@@ -115,11 +132,14 @@ function dropDeadRoom(code, teamId) {
 // hour in HOST_GONE, decided on the server's clock. A device keeps its team until it is told.
 function loadSaved() {
   let raw = null;
-  try { raw = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
+  try { raw = JSON.parse(recall(STORE) || "null"); } catch (e) {}
   return raw && raw.code && raw.teamId ? raw : null;
 }
 
 function join() {
+  // Enter in the members box calls this directly, so the disabled button is not a guard on
+  // its own - and a held key repeats. Without this line one student makes a team per keypress.
+  if ($("#joinBtn").disabled) return;
   const code = $("#code").value.trim().toUpperCase();
   const name = $("#team").value.trim();
   const members = $("#members").value.trim();
@@ -128,17 +148,19 @@ function join() {
 
   $("#joinErr").textContent = "";
   $("#joinBtn").disabled = true;
-  roomState(code)
+  withTimeout(roomState(code)
     .then((state) => {
+      if (state === "none") throw new Error("No game with that code. Check the letters on the board.");
       if (state === "over") throw new Error("That game has ended. Ask for the new code.");
       const ref = db.ref("rooms/" + code + "/teams").push();
       return ref.set({ name: name, members: members, answer: "", locked: false }).then(() => {
-        localStorage.setItem(STORE, JSON.stringify({ code: code, teamId: ref.key }));
+        remember(STORE, JSON.stringify({ code: code, teamId: ref.key }));
         attach(code, ref.key);
       });
-    })
-    .catch((err) => { $("#joinErr").textContent = err.message; })
-    .finally(() => { $("#joinBtn").disabled = false; });
+    }))
+    // Only on failure: a join that worked has already switched to the play screen, and
+    // re-enabling the button there would let a still-held Enter make a second team.
+    .catch((err) => { $("#joinErr").textContent = err.message; $("#joinBtn").disabled = false; });
 }
 
 function attach(code, teamId) {
@@ -184,7 +206,7 @@ function disarmLeave() {
 // answer) and can drop it with the x in the settings panel.
 function toJoinScreen() {
   if (teamRef) { teamRef.off(); teamRef = null; }
-  localStorage.removeItem(STORE);
+  remember(STORE, null);
   wasLocked = false;
   $("#answer").disabled = false;
   $("#answer").value = "";
@@ -211,12 +233,16 @@ function setLocked(locked, answer) {
 }
 
 function lockIn() {
-  if (!teamRef) return;
+  if (!teamRef || $("#lock").disabled) return;
   const answer = $("#answer").value.trim();
   if (!answer) return;                 // empty box does nothing
+  // Every write stamps a fresh buzzedAt, and the snapshot that disables this button is a round
+  // trip away. A second tap inside that gap would re-stamp the team and lose a race it had
+  // won, so shut the button now; setLocked takes it from here when the snapshot lands.
+  $("#lock").disabled = true;
   beep();
   teamRef.update({ answer: answer, buzzedAt: SERVER_TIME, locked: true })
-    .catch((err) => { $("#playErr").textContent = err.message; });
+    .catch((err) => { $("#playErr").textContent = err.message; $("#lock").disabled = false; });
 }
 </script>
 </body>

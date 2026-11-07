@@ -75,9 +75,10 @@ let beatTimer = null;
 const IDLE_WARN = 55 * 60 * 1000;
 const IDLE_GRACE = 5 * 60 * 1000;
 let lastActivity = Date.now();
+let lastTick = Date.now();
 let idleTimer = null;
 let buzzedIds = null;      // null until the first snapshot, so opening a live room does not beep
-let muted = localStorage.getItem(MUTE_KEY) === "1";
+let muted = recall(MUTE_KEY) === "1";
 
 $("#mute").checked = muted;
 $("#createBtn").addEventListener("click", () => openRoom(newCode()));
@@ -96,7 +97,7 @@ const fromUrl = (new URL(location).searchParams.get("room") || "")
 // A tab closed without ending the game leaves the room sitting in the database, and nothing
 // server-side can expire it. This browser does know which room it was, so finish the job on
 // the way back in. openRoom() overwrites the key, so there is nothing to tidy up here.
-const leftover = localStorage.getItem(LAST_ROOM);
+const leftover = recall(LAST_ROOM);
 if (leftover && leftover !== fromUrl) wipeIfDead(leftover);
 
 if (/^[A-Z]{4}$/.test(fromUrl)) openRoom(fromUrl);
@@ -122,7 +123,7 @@ function openRoom(code) {
   $("#dash").hidden = false;
 
   roomCode = code;
-  localStorage.setItem(LAST_ROOM, code);   // so the next open can clear up after a closed tab
+  remember(LAST_ROOM, code);   // so the next open can clear up after a closed tab
   teamsRef = db.ref("rooms/" + code + "/teams");
   teamsRef.on("value", render);
   startHeartbeat();
@@ -138,6 +139,12 @@ function markActive() {
 
 function tickIdle() {
   if (!teamsRef) return;
+  // Timers freeze while the machine sleeps; the clock does not. A lid closed between lessons
+  // would arrive here with hours on it and go straight past the warning to the wipe. Rewind to
+  // the moment the bar appears instead, so the teacher gets the whole countdown while awake.
+  // Math.max can only ever lower the idle time, so a stale lastTick cannot raise a false alarm.
+  if (Date.now() - lastTick > 2 * 60 * 1000) lastActivity = Math.max(lastActivity, Date.now() - IDLE_WARN);
+  lastTick = Date.now();
   const idle = Date.now() - lastActivity;
   if (idle < IDLE_WARN) { $("#idlebar").hidden = true; return; }
   const left = IDLE_WARN + IDLE_GRACE - idle;
@@ -171,11 +178,7 @@ function render(snap) {
     });
   });
 
-  teams.sort((a, b) =>
-    (a.buzzedAt ? 0 : 1) - (b.buzzedAt ? 0 : 1) ||   // buzzed first
-    a.buzzedAt - b.buzzedAt ||                       // then by server buzz time
-    a.id.localeCompare(b.id)                         // stable tie-break
-  );
+  teams.sort(byBuzzOrder);
 
   const nowBuzzed = teams.filter((t) => t.buzzedAt).map((t) => t.id);
   if (buzzedIds && nowBuzzed.some((id) => buzzedIds.indexOf(id) === -1)) {
@@ -280,7 +283,7 @@ function togglePanel() {
 
 function setMute() {
   muted = $("#mute").checked;
-  localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
+  remember(MUTE_KEY, muted ? "1" : "0");
   if (!muted) beep();            // confirm it is audible again
 }
 
@@ -318,9 +321,9 @@ function wipeRoom(code) {
 }
 
 // Only if nothing is holding the room: a second dashboard tab on this machine must not wipe
-// a game the first one is still running.
-// shortcut: rules that predate hostSeen leave no stamp to read, so that second tab would
-// wipe the live room. Re-publishing database.rules.json fixes it, and the cog says so.
+// a game the first one is still running. A read that fails - rules that predate hostSeen, or
+// no connection - rejects into the catch below, so the room is left alone instead of being
+// wiped on a guess. That means no auto-cleanup until the rules are published, which the cog says.
 function wipeIfDead(code) {
   return hostSeenAge(code).then((age) => {
     if (code === roomCode) return;                     // this browser has just reopened it
@@ -340,7 +343,7 @@ function endGame() {
   $("#idlebar").hidden = true;
   wipeRoom(code).then(() => {
     ref.off();
-    localStorage.removeItem(LAST_ROOM);
+    remember(LAST_ROOM, null);
     teamsRef = null;
     roomCode = null;
     buzzedIds = null;
@@ -351,7 +354,15 @@ function endGame() {
     $("#dash").hidden = true;
     $("#setup").hidden = false;
     try { history.replaceState(null, "", location.pathname); } catch (e) {}
-  }).catch((err) => { alert("Could not end the game: " + err.message); });
+  }).catch((err) => {
+    // Both timers were stopped before the wipe, so leaving them off would hand back a dashboard
+    // that looks fine while it has quietly stopped stamping hostSeen and can no longer end
+    // itself. markActive() matters here: without it an idle expiry would re-fire every second.
+    startHeartbeat();
+    markActive();
+    idleTimer = setInterval(tickIdle, 1000);
+    alert("Could not end the game: " + err.message);
+  });
 }
 </script>
 </body>
